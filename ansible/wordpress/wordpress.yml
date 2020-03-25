@@ -1,0 +1,84 @@
+---
+- hosts: '{{ target }}'
+  become: yes
+  gather_facts: no
+
+  tasks:
+
+  #
+  # Installing partial lamp, php mysql bindings and tools
+  #
+  - shell: amazon-linux-extras enable php7.3
+
+  - name: Installing LAMP and tools
+    yum: name={{ item }} state=present
+    with_items:
+    - nmap-ncat
+    - htop
+    - httpd
+    - mariadb
+    - memcached
+    - php
+    - php-mysqlnd
+    - php-mbstring
+    - php-pecl-memcached
+    - mod_ssl
+    - amazon-efs-utils
+    - php-xml
+    - php-pecl-imagick
+
+  #
+  # Configure the EFS mountpoint
+  #
+  - name: Mount the EFS volume
+    mount:
+      name: /var/www/html
+      src: "fs-665adbcc.efs.us-west-2.amazonaws.com:/"
+      fstype: nfs4
+      opts: nfsvers=4.1
+      state: mounted
+
+  #
+  # Configure apache AllowOverride
+  #
+  - name: Change apache AllowOverride settings
+    replace:
+      path: /etc/httpd/conf/httpd.conf
+      regexp: 'AllowOverride None'
+      replace: "AllowOverride All"
+
+  - name: Change apache AllowOverride settings with underscore
+    replace:
+      path: /etc/httpd/conf/httpd.conf
+      regexp: 'AllowOverride none'
+      replace: "AllowOverride All"
+
+  #
+  # Enable apache https
+  #
+  - name: Create dummy cert
+    shell: 
+      cmd: ./make-dummy-cert localhost.crt
+      chdir: /etc/pki/tls/certs
+
+  - name: Comment the private key file from apache configuration
+    replace:
+      path: /etc/httpd/conf.d/ssl.conf
+      regexp: '(.*SSLCertificateKeyFile.*)'
+      replace: '#\1'
+
+  #
+  # Final service restart
+  #
+  - name: Restarting LAMP stack
+    service: name={{ item }} state=restarted
+    with_items:
+    - httpd
+
+  #
+  # Enable memcached service
+  #
+  - name: start the memcached service
+    service:
+      name: memcached
+      state: started

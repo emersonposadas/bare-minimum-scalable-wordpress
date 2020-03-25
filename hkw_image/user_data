@@ -1,0 +1,15 @@
+#cloud-config
+
+runcmd:
+ - timedatectl set-timezone America/Mexico_City
+ - amazon-linux-extras install -y ansible2
+ - sed -i 's/#Port 22/Port 1338/g' /etc/ssh/sshd_config
+ - systemctl restart sshd
+ - adduser customuser
+ - mkdir -p /home/customuser/.ssh
+ - chmod 700 /home/customuser/.ssh
+ - touch /home/customuser/.ssh/authorized_keys
+ - chmod 600 /home/customuser/.ssh/authorized_keys
+ - chown -R customuser.customuser /home/customuser
+ - echo "customuser ALL=(ALL)NOPASSWD:ALL" >> /etc/sudoers
+ - echo "ssh-rsa someLONGRSAHASH == emerson.posadas" >> /home/customuser/.ssh/authorized_keys

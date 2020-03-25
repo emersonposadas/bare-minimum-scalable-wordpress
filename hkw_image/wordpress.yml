@@ -1,0 +1,178 @@
+---
+- hosts: all
+  become: yes
+  gather_facts: no
+
+  tasks:
+
+  #
+  # Installing partial lamp, php mysql bindings and tools
+  #
+  - shell: amazon-linux-extras enable php7.3
+
+  - name: Installing LAMP and tools
+    yum:
+      name:
+        - nmap-ncat
+        - htop
+        - httpd
+        - memcached
+        - php
+        - php-mysqlnd
+        - php-mbstring
+        - php-pecl-memcached
+        - mod_ssl
+        - amazon-efs-utils
+        - php-xml
+        - php-pecl-imagick
+      state: present
+
+  #
+  # Packages for custom metrics
+  #
+  - name: Installing packages for custom metrics
+    yum:
+      name:
+        - perl-Switch
+        - perl-DateTime
+        - perl-Sys-Syslog
+        - perl-LWP-Protocol-https
+        - perl-Digest-SHA.x86_64
+      state: present
+
+  #
+  # Install monitoring scripts
+  #
+  - name: Get CloudWatchMonitoringScripts zip file
+    unarchive:
+      src: https://aws-cloudwatch.s3.amazonaws.com/downloads/CloudWatchMonitoringScripts-1.2.2.zip
+      dest: /usr/local/bin
+      remote_src: yes
+
+  #
+  # Cron job for cloudwatch custom metrics
+  #
+  - name: Create monitoring script cron job 
+    cron:
+      name: "cw_custom_metrics"
+      minute: "*/1"
+      hour: "*"
+      job: "/usr/local/bin/aws-scripts-mon/mon-put-instance-data.pl --mem-used-incl-cache-buff --mem-util --mem-used --mem-avail --aggregated=only --auto-scaling=only --from-cron"
+
+  #
+  # Configure the EFS mountpoint
+  #
+  - name: Create EFS mountpoint
+    mount:
+      name: /var/www/html
+      src: "fs-id.efs.us-west-2.amazonaws.com:/"
+      fstype: nfs4
+      opts: nfsvers=4.1
+      state: mounted
+
+  #
+  # Configure apache AllowOverride
+  #
+  - name: Change apache AllowOverride settings
+    replace:
+      path: /etc/httpd/conf/httpd.conf
+      regexp: 'AllowOverride None'
+      replace: "AllowOverride All"
+
+  - name: Change apache AllowOverride settings with underscore
+    replace:
+      path: /etc/httpd/conf/httpd.conf
+      regexp: 'AllowOverride none'
+      replace: "AllowOverride All"
+
+  #
+  # Enable apache https
+  #
+  - name: Create dummy cert
+    shell: 
+      cmd: ./make-dummy-cert localhost.crt
+      chdir: /etc/pki/tls/certs
+
+  - name: Comment the private key file from apache configuration
+    replace:
+      path: /etc/httpd/conf.d/ssl.conf
+      regexp: '(.*SSLCertificateKeyFile.*)'
+      replace: '#\1'
+
+  - name: enable the httpd service
+    service:
+      name: httpd
+      enabled: yes
+
+  #
+  # Incrase PHP memory_limit = 512M
+  #
+  - name: Increase the default PHP memory limit to 512M
+    replace:
+      path: /etc/php.ini
+      regexp: 'memory_limit = 128M'
+      replace: 'memory_limit = 512M'
+
+  #
+  # Set the php timezone
+  #
+  - name: Set the php timezone
+    replace:
+      path: /etc/php.ini
+      regexp: '(.*;date.timezone =.*)'
+      replace: 'date.timezone = "America/Mexico_City"'
+
+  #
+  # Final service restart
+  #
+  - name: Restarting LAMP stack
+    service: name={{ item }} state=restarted
+    with_items:
+    - httpd
+
+  #
+  # Enable and start memcached service
+  #
+  - name: enable the memcached service
+    service:
+      name: memcached
+      enabled: yes
+
+  - name: start the memcached service
+    service:
+      name: memcached
+      state: started
+
+  #
+  # Change sshd configuration
+  #
+  - name: Disable Root Login on sshd
+    replace:
+      path: /etc/ssh/sshd_config
+      regexp: '#PermitRootLogin yes'
+      replace: 'PermitRootLogin no'
+
+  #
+  # Set OS timezone
+  #
+  - name: Set OS timezone
+    replace:
+      path: /etc/sysconfig/clock
+      regexp: '(.*ZONE="UTC".*)'
+      replace: 'ZONE="America/Mexico_City"'
+
+  - name: Create a symbolic link
+    file:
+      src: /etc/localtime
+      dest: /usr/share/zoneinfo/America/Mexico_City
+      state: link
+      force: yes
+
+  #
+  # Remove ec2-user
+  #
+  - name: Remove the user 'ec2-user'
+    user:
+      name: ec2-user
+      state: absent
+      remove: yes

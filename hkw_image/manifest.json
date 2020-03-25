@@ -1,0 +1,45 @@
+{
+  "variables": {
+    "aws_access_key": "{{env `AWS_ACCESS_KEY_ID`}}",
+    "aws_secret_key": "{{env `AWS_SECRET_ACCESS_KEY`}}"
+  },
+  "builders": [{
+    "type": "amazon-ebs",
+    "region": "us-west-2",
+    "subnet_id": "subnet-0064e11d13f6e701c",
+    "source_ami_filter": {
+      "filters": {
+        "virtualization-type": "hvm",
+        "name": "amzn2-ami-hvm-2.0.2020*-x86_64-gp2",
+        "root-device-type": "ebs"
+      },
+      "owners": "137112412989",
+      "most_recent": true
+    },
+    "instance_type": "t3a.small",
+    "associate_public_ip_address": "true",
+    "launch_block_device_mappings": [ {
+         "device_name": "/dev/xvda",
+         "volume_size": 8,
+         "volume_type": "gp2",
+         "delete_on_termination": true
+     } ],
+    "communicator": "ssh",
+    "ssh_username": "mrbltxkr",
+    "ssh_port": "1338",
+    "ssh_private_key_file": "~/.ssh/id_rsa_personal",
+    "ssh_agent_auth": "false",
+    "user_data_file": "./user_data",
+    "ami_name": "hkw_{{ isotime \"2006-01-02\" }}-{{ timestamp }}",
+    "tags": {
+      "Name": "hkw_{{ isotime \"2006-01-02\" }}-{{ timestamp }}",
+      "Base AMI Name": "{{ .SourceAMIName }}"
+    }
+  }],
+  "provisioners": [
+    {
+      "type": "ansible-local",
+      "playbook_file": "wordpress.yml"
+    }
+  ]
+}
